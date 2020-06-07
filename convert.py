@@ -152,6 +152,20 @@ def getPreview(img, palette, dither=0.0):
             prev[r,c,:]=colors[idx_map[r,c]]
     return np.asarray(prev,np.uint8)
 
+def getPalettePreview(palette):
+    size=48
+    prev = np.zeros((size,size*len(palette),3),dtype=float)
+    colors = selectColors(palette)
+    for i in range(len(colors)):
+        prev[:,size*i:size*(i+1),:] = colors[i]
+        idx = (128 * (palette[i] // 16)) + (palette[i] % 16)
+        if np.sum(colors[i])/3.0 > 128.0: textcol = (0.0,0.0,0.0)
+        else: textcol = (255.0,255.0,255.0)
+        cv2.putText(prev,str(idx),(size*i+1,size-16),
+                    cv2.FONT_HERSHEY_DUPLEX,0.65,textcol)
+    prev = np.asarray(prev,dtype=np.uint8)
+    return prev
+
 def arrangePalette(palette):
     used = [False] * 16
 
@@ -262,6 +276,7 @@ if preview:
     prev = cv2.resize(getPreview(img,palette,dither),None,
                       fx=3,fy=3,interpolation=cv2.INTER_NEAREST)
     cv2.imshow("Original", orig)
+    cv2.imshow("Palette", getPalettePreview(palette))
     cv2.imshow("Converted", prev)
     print("Press any key in the window to continue...")
     cv2.waitKey(0)
