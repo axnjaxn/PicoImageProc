@@ -113,19 +113,26 @@ def convertImage(img, palette, dither=0.0):
     colors = selectColors(palette)
     idx_map = np.zeros(img.shape[:2], dtype=int)
     debt = np.zeros(img.shape, dtype=float)
+    inrange = lambda x: (x >= 0 and x < img.shape[1])
     for r in range(img.shape[0]):
-        for c in range(img.shape[1]):
+        if r%2==0:
+            clist = range(img.shape[1])
+            dc = 1
+        else:
+            clist = range(img.shape[1]-1,-1,-1)
+            dc = -1
+        for c in clist:
             bgr = np.asarray(img[r,c,:], float) + debt[r,c,:]
             idx = bestColor(bgr,colors)
             idx_map[r,c] = idx
             if dither>0.0:
                 error = dither*(bgr-colors[idx])
-                if c < img.shape[1] - 1:
-                    debt[r,c+1] = debt[r,c+1] + (7/16.0)*error
+                if inrange(c+dc):
+                    debt[r,c+dc] += (7/16.0)*error
                 if r < img.shape[0] - 1:
-                    if c > 0: debt[r+1,c-1] = debt[r+1,c-1] + (3/16.0)*error
-                    debt[r+1,c] = debt[r+1,c] + (5/16.0)*error
-                    if c < img.shape[1] - 1: debt[r+1,c+1] = debt[r+1,c+1] + (1/16.0)*error
+                    if inrange(c-dc): debt[r+1,c-dc] += (3/16.0)*error
+                    debt[r+1,c] += (5/16.0)*error
+                    if inrange(c+dc): debt[r+1,c+dc] += (1/16.0)*error
 
     return idx_map
 
