@@ -188,7 +188,7 @@ while i < len(sys.argv):
                 idx = int(line.strip())
                 idx = (idx % 16) + 16 * (idx//128)
                 palette.append(idx)
-    elif arg == "--default-colors":
+    elif arg == "--default-palette":
         palette = list(range(16))
     elif arg == "--dither":
         i = i + 1
