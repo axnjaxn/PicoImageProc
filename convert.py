@@ -68,7 +68,6 @@ def bestColor(bgr,colors):
             best = i
     return best
 
-# TODO: This can be made more efficient; I have an algorithm I've been too lazy to write yet!
 def bestPalette(img, palette=None):
     if palette is None:
         colors = allColors()
@@ -76,19 +75,30 @@ def bestPalette(img, palette=None):
     else:
         colors = selectColors(palette)
 
+    idx_map = np.zeros(img.shape[:2],dtype=int)
+    h = [0] * len(colors)
+    for r in range(img.shape[0]):
+        for c in range(img.shape[1]):
+            bgr = np.asarray(img[r,c,:], float)
+            idx = bestColor(bgr, colors)
+            idx_map[r,c] = idx
+            h[idx] = h[idx] + 1
+
     while len(colors) > 16:
-        h = [0] * len(colors)
-        for r in range(img.shape[0]):
-            for c in range(img.shape[1]):
-                bgr = np.asarray(img[r,c,:], float)
-                idx = bestColor(bgr, colors)
-                h[idx] = h[idx] + 1
         worst = 0
         for i in range(1, len(colors)):
             if h[i]<h[worst]:
                 worst = i
         colors = colors[:worst] + colors[worst+1:]
         palette = palette[:worst] + palette[worst+1:]
+        h = h[:worst] + h[worst+1:]
+        for r in range(img.shape[0]):
+            for c in range(img.shape[1]):
+                if idx_map[r,c]==worst:
+                    bgr = np.asarray(img[r,c,:], float)
+                    idx = bestColor(bgr, colors)
+                    idx_map[r,c] = idx
+                    h[idx] = h[idx] + 1
 
     return palette
 
