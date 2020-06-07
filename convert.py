@@ -176,6 +176,7 @@ python %s [options] imagefile.ext output.p8
 --use-palette palette-filename: only use the palette listed in the file
                                 (format is text, one color index per line)
 --default-palette: use the normal palette and disable secret colors
+--ban-color index: do not allow a color index to appear in recommendations
 --dither percentage: enable Floyd-Steinberg dithering (0%-100%)
 --preview: preview results (3x scale, press any key to terminate)
 --slower-recommend: take dithering settings into account when recommending (slower)
@@ -188,7 +189,7 @@ if len(sys.argv) < 3:
 imagefn = None
 outfn = None
 
-palette = None
+palette = list(range(32))
 preview = False
 dither = 0.0
 tryhard = False
@@ -203,6 +204,11 @@ while i < len(sys.argv):
                 idx = int(line.strip())
                 idx = (idx % 16) + 16 * (idx//128)
                 palette.append(idx)
+    elif arg == "--ban-color":
+        i = i + 1
+        idx = int(sys.argv[i])
+        idx = (idx % 16) + 16 * (idx//128)
+        palette.remove(idx)
     elif arg == "--default-palette":
         palette = list(range(16))
     elif arg == "--dither":
@@ -243,7 +249,7 @@ if max(img.shape[0],img.shape[1])>128:
                      fy=128.0/max(img.shape[0],img.shape[1]),
                      interpolation=cv2.INTER_AREA)
 
-if palette is None or len(palette) > 16:
+if len(palette) > 16:
     print("Generating recommended palette...")
     recommend_dither = dither
     if not tryhard: recommend_dither = 0
