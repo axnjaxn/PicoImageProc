@@ -109,14 +109,34 @@ def selectColors(palette):
         colors.append(all_colors[idx])
     return colors
 
-def getPreview(img, palette):
+def convertImage(img, palette, dither=0.0):
     colors = selectColors(palette)
+    idx_map = np.zeros(img.shape[:2], dtype=int)
+    debt = np.zeros(img.shape, dtype=float)
+    for r in range(img.shape[0]):
+        for c in range(img.shape[1]):
+            bgr = np.asarray(img[r,c,:], float) + debt[r,c,:]
+            idx = bestColor(bgr,colors)
+            idx_map[r,c] = idx
+            if dither>0.0:
+                error = dither*(bgr-colors[idx])
+                if c < img.shape[1] - 1:
+                    debt[r,c+1] = debt[r,c+1] + (7/16.0)*error
+                if r < img.shape[0] - 1:
+                    if c > 0: debt[r+1,c-1] = debt[r+1,c-1] + (3/16.0)*error
+                    debt[r+1,c] = debt[r+1,c] + (5/16.0)*error
+                    if c < img.shape[1] - 1: debt[r+1,c+1] = debt[r+1,c+1] + (1/16.0)*error
+
+    return idx_map
+
+def getPreview(img, palette, dither=0.0):
+    idx_map = convertImage(img, palette, dither)
+    colors = selectColors(palette)
+
     prev = np.zeros(img.shape, dtype=float)
     for r in range(img.shape[0]):
         for c in range(img.shape[1]):
-            bgr = np.asarray(img[r,c,:], float)
-            idx = bestColor(bgr,colors)
-            prev[r,c,:]=colors[idx]
+            prev[r,c,:]=colors[idx_map[r,c]]
     return np.asarray(prev,np.uint8)
 
 def arrangePalette(palette):
@@ -143,6 +163,7 @@ python %s [options] imagefile.ext output.p8
 --use-palette palette-filename: only use the palette listed in the file
                                 (format is text, one color index per line)
 --default-palette: use the normal palette and disable secret colors
+--dither percentage: enable Floyd-Steinberg dithering (0%-100%)
 --preview: preview results (3x scale, press any key to terminate)
 '''
 
@@ -155,6 +176,7 @@ outfn = None
 
 palette = None
 preview = False
+dither = 0.0
 i=1
 while i < len(sys.argv):
     arg = sys.argv[i]
@@ -168,6 +190,9 @@ while i < len(sys.argv):
                 palette.append(idx)
     elif arg == "--default-colors":
         palette = list(range(16))
+    elif arg == "--dither":
+        i = i + 1
+        dither = min(max(float(sys.argv[i])/100.0,0.0),1.0)
     elif arg == "--preview":
         preview = True
     elif imagefn == None:
@@ -210,12 +235,14 @@ if palette is None or len(palette) > 16:
 if preview:
     orig = cv2.resize(img,None,
                       fx=3,fy=3,interpolation=cv2.INTER_NEAREST)
-    prev = cv2.resize(getPreview(img,palette),None,
+    prev = cv2.resize(getPreview(img,palette,dither),None,
                       fx=3,fy=3,interpolation=cv2.INTER_NEAREST)
     cv2.imshow("Original", orig)
     cv2.imshow("Converted", prev)
     print("Press any key in the window to continue...")
     cv2.waitKey(0)
+
+converted = convertImage(img,palette,dither)
 
 with open(outfn,'w') as fp:
     fp.write("pico-8 cartridge // http://www.pico-8.com\n")
@@ -234,13 +261,12 @@ with open(outfn,'w') as fp:
         s = s[:-1]
         fp.write("pal({%s},1)\n" % (s))
 
+    fp.write("palt(0,false) spr(0,0,0,16,16) while true do end\n")
+
     fp.write("__gfx__\n")
-    colors = selectColors(palette)
     for r in range(img.shape[0]):
         for c in range(img.shape[1]):
-            bgr = np.asarray(img[r,c,:], float)
-            idx = bestColor(bgr,colors)
-            fp.write("%1x" % (idx))
+            fp.write("%1x" % (converted[r,c]))
         for c in range(img.shape[1],128):
             fp.write("0")
         fp.write("\n")
