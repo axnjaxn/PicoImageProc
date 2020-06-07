@@ -225,16 +225,15 @@ if imagefn is None:
     print("Error: no image filename specified.")
     sys.exit(1)
 
-if outfn is None:
-    print("Error: no output cart filename specified.")
-    sys.exit(1)
-
-if os.path.isfile(outfn):
-    print("Error: output cartridge already exists!")
-    print("For now, this script creates an empty cartridge to store the graphics in.")
-    print("Eventually, I'll change it to write to existing carts.")
-    print("For now, I'm being too lazy to even write a confirm dialog!")
-    sys.exit(1)
+if outfn and os.path.isfile(outfn):
+    print("Warning: output cartridge already exists!")
+    print("This script will overwrite the contents of the output cartridge.")
+    yn = input("Are you sure you want to continue? ").lower().strip()
+    if yn == "y" or yn == "yes":
+        print("Overwriting.")
+    else:
+        print("Canceling.")
+        sys.exit(1)
 
 img = cv2.imread(imagefn)
 
@@ -260,6 +259,10 @@ if preview:
     cv2.imshow("Converted", prev)
     print("Press any key in the window to continue...")
     cv2.waitKey(0)
+
+if outfn is None:
+    print("Warning: No output file specified; no output written.")
+    sys.exit(0)
 
 converted = convertImage(img,palette,dither)
 
