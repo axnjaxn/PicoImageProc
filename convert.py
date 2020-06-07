@@ -68,21 +68,18 @@ def bestColor(bgr,colors):
             best = i
     return best
 
-def bestPalette(img, palette=None):
+def bestPalette(img, palette=None, dither=0.0):
     if palette is None:
         colors = allColors()
         palette = list(range(len(colors)))
     else:
         colors = selectColors(palette)
 
-    idx_map = np.zeros(img.shape[:2],dtype=int)
+    idx_map = convertImage(img,palette,dither)
     h = [0] * len(colors)
     for r in range(img.shape[0]):
         for c in range(img.shape[1]):
-            bgr = np.asarray(img[r,c,:], float)
-            idx = bestColor(bgr, colors)
-            idx_map[r,c] = idx
-            h[idx] = h[idx] + 1
+            h[idx_map[r,c]] += 1
 
     while len(colors) > 16:
         worst = 0
@@ -91,14 +88,23 @@ def bestPalette(img, palette=None):
                 worst = i
         colors = colors[:worst] + colors[worst+1:]
         palette = palette[:worst] + palette[worst+1:]
+        change_ct = h[worst]
         h = h[:worst] + h[worst+1:]
-        for r in range(img.shape[0]):
-            for c in range(img.shape[1]):
-                if idx_map[r,c]==worst:
-                    bgr = np.asarray(img[r,c,:], float)
-                    idx = bestColor(bgr, colors)
-                    idx_map[r,c] = idx
-                    h[idx] = h[idx] + 1
+        if change_ct > 0:
+            if dither>0:
+                idx_map = convertImage(img,palette,dither)
+                h = [0] * len(colors)
+                for r in range(img.shape[0]):
+                    for c in range(img.shape[1]):
+                        h[idx_map[r,c]] += 1
+            else:
+                for r in range(img.shape[0]):
+                    for c in range(img.shape[1]):
+                        if idx_map[r,c]==worst:
+                            bgr = np.asarray(img[r,c,:], float)
+                            idx = bestColor(bgr, colors)
+                            idx_map[r,c] = idx
+                            h[idx] = h[idx] + 1
 
     return palette
 
@@ -172,6 +178,7 @@ python %s [options] imagefile.ext output.p8
 --default-palette: use the normal palette and disable secret colors
 --dither percentage: enable Floyd-Steinberg dithering (0%-100%)
 --preview: preview results (3x scale, press any key to terminate)
+--slower-recommend: take dithering settings into account when recommending (slower)
 '''
 
 if len(sys.argv) < 3:
@@ -184,6 +191,7 @@ outfn = None
 palette = None
 preview = False
 dither = 0.0
+tryhard = False
 i=1
 while i < len(sys.argv):
     arg = sys.argv[i]
@@ -202,6 +210,8 @@ while i < len(sys.argv):
         dither = min(max(float(sys.argv[i])/100.0,0.0),1.0)
     elif arg == "--preview":
         preview = True
+    elif arg == "--slower-recommend":
+        tryhard = True
     elif imagefn == None:
         imagefn = arg
     elif outfn == None:
@@ -236,7 +246,9 @@ if max(img.shape[0],img.shape[1])>128:
 
 if palette is None or len(palette) > 16:
     print("Generating recommended palette...")
-    palette = arrangePalette(bestPalette(img, palette))
+    recommend_dither = dither
+    if not tryhard: recommend_dither = 0
+    palette = arrangePalette(bestPalette(img, palette, recommend_dither))
     print("Done.")
 
 if preview:
@@ -268,7 +280,7 @@ with open(outfn,'w') as fp:
         s = s[:-1]
         fp.write("pal({%s},1)\n" % (s))
 
-    fp.write("palt(0,false) spr(0,0,0,16,16) while true do end\n")
+    fp.write("palt(0,false)\nspr(0,0,0,16,16)\nwhile true do end\n")
 
     fp.write("__gfx__\n")
     for r in range(img.shape[0]):
