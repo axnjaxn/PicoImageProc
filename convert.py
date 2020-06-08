@@ -67,14 +67,14 @@ def bestColor(bgr,colors):
             best = i
     return best
 
-def bestPalette(img, palette=None, dither=0.0):
+def bestPalette(img, palette=None, dither=0.0, ordered=False):
     if palette is None: palette = list(range(len(colors)))
     colors = selectColorsLAB(palette)
 
     # This is redundant, but used in the below optimization
     converted = cv2.cvtColor(np.asarray(img, dtype=np.float32)/255.0, cv2.COLOR_BGR2Lab)
 
-    idx_map = convertImage(img,palette,dither)
+    idx_map = convertImage(img,palette,dither,ordered)
     h = [0] * 32 # I need to keep the actual color indices here, not palette indices
     for r in range(img.shape[0]):
         for c in range(img.shape[1]):
@@ -90,7 +90,7 @@ def bestPalette(img, palette=None, dither=0.0):
         palette = palette[:worst] + palette[worst+1:]
         if change_ct > 0:
             if dither>0:
-                idx_map = convertImage(img,palette,dither)
+                idx_map = convertImage(img,palette,dither,ordered)
                 h = [0] * 32
                 for r in range(img.shape[0]):
                     for c in range(img.shape[1]):
@@ -129,7 +129,22 @@ def selectColorsLAB(palette):
         colors[i] = np.asarray(cimg[i,0,:], dtype=float)
     return colors
 
-def convertImage(img, palette, dither=0.0):
+# sz needs to be a power of two > 2
+def generateDitherMatrix(sz):
+    sz=128
+    M = np.zeros((sz,sz), dtype=int)
+    M[:2,:2] = [[0, 2], [3, 1]]
+    n=2
+    while n < sz:
+        M[n:2*n,n:2*n] = 4 * M[:n,:n]+1
+        M[:n,n:2*n] = 4 * M[:n,:n]+2
+        M[n:2*n,:n] = 4 * M[:n,:n]+3
+        M[:n,:n] = 4 * M[:n,:n]
+        n *= 2
+    M = 255.0 * (np.asarray(M, dtype=np.float32) / (sz * sz) - 0.5)
+    return M
+
+def convertImage(img, palette, dither=0.0, ordered=False):
     colors_lab = selectColorsLAB(palette)
 
     fimg = np.asarray(img, dtype=np.float32)
@@ -144,8 +159,19 @@ def convertImage(img, palette, dither=0.0):
                 idx_map[r,c] = idx
         return idx_map
 
-    colors = selectColors(palette)
     tolab = lambda v: cv2.cvtColor(v.reshape(1,1,3)/255.0, cv2.COLOR_BGR2Lab).reshape(3)
+
+    if ordered:
+        M = generateDitherMatrix(128)
+
+        for r in range(fimg.shape[0]):
+            for c in range(fimg.shape[1]):
+                lab = tolab(np.clip(fimg[r,c,:]+dither*M[r,c],0,255))
+                idx = bestColor(lab,colors_lab)
+                idx_map[r,c] = idx
+        return idx_map
+
+    colors = selectColors(palette)
     debt = np.zeros(fimg.shape, dtype=np.float32)
     inrange = lambda x: (x >= 0 and x < fimg.shape[1])
 
@@ -171,8 +197,8 @@ def convertImage(img, palette, dither=0.0):
 
     return idx_map
 
-def getPreview(img, palette, dither=0.0):
-    idx_map = convertImage(img, palette, dither)
+def getPreview(img, palette, dither=0.0, ordered = False):
+    idx_map = convertImage(img, palette, dither, ordered)
     colors = selectColors(palette)
 
     prev = np.zeros(img.shape, dtype=float)
@@ -215,12 +241,15 @@ def arrangePalette(palette):
     return arranged
 
 usage = '''
-python %s [options] imagefile.ext output.p8
+python %s [options] imagefile.ext [output.p8]
 --use-palette palette-filename: only use the palette listed in the file
                                 (format is text, one color index per line)
 --default-palette: use the normal palette and disable secret colors
 --ban-color index: do not allow a color index to appear in recommendations
 --dither percentage: enable Floyd-Steinberg dithering (0%-100%)
+--ordered-dither percentage: use ordered dithering
+--brighten percentage: adjust global image brightness
+--contrast percentage: adjust global image contrast
 --preview: preview results (3x scale, press any key to terminate)
 --slower-recommend: take dithering settings into account when recommending (slower)
 '''
@@ -236,6 +265,9 @@ palette = list(range(32))
 preview = False
 dither = 0.0
 tryhard = False
+ordered = False
+brighten = 0.0
+contrast = 1.0
 i=1
 while i < len(sys.argv):
     arg = sys.argv[i]
@@ -257,10 +289,20 @@ while i < len(sys.argv):
     elif arg == "--dither":
         i = i + 1
         dither = min(max(float(sys.argv[i])/100.0,0.0),1.0)
+    elif arg == "--ordered-dither":
+        i = i + 1
+        dither = min(max(float(sys.argv[i])/100.0,0.0),1.0)
+        ordered = True
     elif arg == "--preview":
         preview = True
     elif arg == "--slower-recommend":
         tryhard = True
+    elif arg == "--brighten":
+        i = i + 1
+        brighten = 255.0 * min(max(float(sys.argv[i])/100.0,-1.0),1.0)
+    elif arg == "--contrast":
+        i = i + 1
+        contrast = max(float(sys.argv[i])/100.0,0.0)
     elif imagefn == None:
         imagefn = arg
     elif outfn == None:
@@ -290,6 +332,14 @@ if outfn and os.path.isfile(outfn):
 
 img = cv2.imread(imagefn)
 
+if contrast != 1.0 or brighten != 0.0:
+    img = np.asarray(img, dtype=float)
+    if contrast != 1.0:
+        img = contrast * (img - 128) + 128
+    if brighten != 0.0:
+        img = img + brighten
+    img = np.asarray(np.clip(img,0,255), dtype=np.uint8)
+
 if max(img.shape[0],img.shape[1])>128:
     img = cv2.resize(img, None,
                      fx=128.0/max(img.shape[0],img.shape[1]),
@@ -300,13 +350,13 @@ if len(palette) > 16:
     print("Generating recommended palette...")
     recommend_dither = dither
     if not tryhard: recommend_dither = 0
-    palette = arrangePalette(bestPalette(img, palette, recommend_dither))
+    palette = arrangePalette(bestPalette(img, palette, recommend_dither, ordered))
     print("Done.")
 
 if preview:
     orig = cv2.resize(img,None,
                       fx=3,fy=3,interpolation=cv2.INTER_NEAREST)
-    prev = cv2.resize(getPreview(img,palette,dither),None,
+    prev = cv2.resize(getPreview(img,palette,dither,ordered),None,
                       fx=3,fy=3,interpolation=cv2.INTER_NEAREST)
     cv2.imshow("Original", orig)
     cv2.imshow("Palette", getPalettePreview(palette))
@@ -318,7 +368,7 @@ if outfn is None:
     print("Warning: No output file specified; no output written.")
     sys.exit(0)
 
-converted = convertImage(img,palette,dither)
+converted = convertImage(img,palette,dither,ordered)
 
 with open(outfn,'w') as fp:
     fp.write("pico-8 cartridge // http://www.pico-8.com\n")
