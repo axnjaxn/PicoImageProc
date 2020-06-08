@@ -45,9 +45,8 @@ def hex2bgr(s):
     b = int(s[4:], 16)
     return np.array([b, g, r], dtype=float)
 
-# TODO: I'm going to use a perceptual distance later on
-def squareDist(bgr1,bgr2):
-    d = np.asarray(bgr1, float) - np.asarray(bgr2, float)
+def squareDist(v1,v2):
+    d = v1 - v2
     return d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
 
 def allColors():
@@ -69,42 +68,47 @@ def bestColor(bgr,colors):
     return best
 
 def bestPalette(img, palette=None, dither=0.0):
-    if palette is None:
-        colors = allColors()
-        palette = list(range(len(colors)))
-    else:
-        colors = selectColors(palette)
+    if palette is None: palette = list(range(len(colors)))
+    colors = selectColorsLAB(palette)
+
+    # This is redundant, but used in the below optimization
+    converted = cv2.cvtColor(np.asarray(img, dtype=np.float32)/255.0, cv2.COLOR_BGR2Lab)
 
     idx_map = convertImage(img,palette,dither)
-    h = [0] * len(colors)
+    h = [0] * 32 # I need to keep the actual color indices here, not palette indices
     for r in range(img.shape[0]):
         for c in range(img.shape[1]):
-            h[idx_map[r,c]] += 1
+            h[palette[idx_map[r,c]]] += 1
 
-    while len(colors) > 16:
+    while len(palette) > 16:
         worst = 0
-        for i in range(1, len(colors)):
-            if h[i]<h[worst]:
+        for i in range(1, len(palette)):
+            if h[palette[i]] < h[palette[worst]]:
                 worst = i
+        change_ct = h[palette[worst]]
         colors = colors[:worst] + colors[worst+1:]
         palette = palette[:worst] + palette[worst+1:]
-        change_ct = h[worst]
-        h = h[:worst] + h[worst+1:]
         if change_ct > 0:
             if dither>0:
                 idx_map = convertImage(img,palette,dither)
-                h = [0] * len(colors)
+                h = [0] * 32
                 for r in range(img.shape[0]):
                     for c in range(img.shape[1]):
-                        h[idx_map[r,c]] += 1
+                        h[palette[idx_map[r,c]]] += 1
             else:
                 for r in range(img.shape[0]):
                     for c in range(img.shape[1]):
                         if idx_map[r,c]==worst:
-                            bgr = np.asarray(img[r,c,:], float)
-                            idx = bestColor(bgr, colors)
+                            idx = bestColor(converted[r,c,:], colors)
                             idx_map[r,c] = idx
-                            h[idx] = h[idx] + 1
+                            h[palette[idx]] += 1
+                        elif idx_map[r,c]>worst:
+                            idx_map[r,c] -= 1
+        else:
+            for r in range(img.shape[0]):
+                for c in range(img.shape[1]):
+                    if idx_map[r,c]>worst:
+                        idx_map[r,c] -= 1
 
     return palette
 
@@ -115,27 +119,52 @@ def selectColors(palette):
         colors.append(all_colors[idx])
     return colors
 
-def convertImage(img, palette, dither=0.0):
+def selectColorsLAB(palette):
     colors = selectColors(palette)
-    idx_map = np.zeros(img.shape[:2], dtype=int)
-    debt = np.zeros(img.shape, dtype=float)
-    inrange = lambda x: (x >= 0 and x < img.shape[1])
-    for r in range(img.shape[0]):
+    cimg = np.zeros((len(colors),1,3), dtype=np.float32)
+    for i in range(len(colors)):
+        cimg[i,0,:] = colors[i] / 255.0
+    cimg = cv2.cvtColor(cimg, cv2.COLOR_BGR2Lab)
+    for i in range(len(colors)):
+        colors[i] = np.asarray(cimg[i,0,:], dtype=float)
+    return colors
+
+def convertImage(img, palette, dither=0.0):
+    colors_lab = selectColorsLAB(palette)
+
+    fimg = np.asarray(img, dtype=np.float32)
+    idx_map = np.zeros(fimg.shape[:2], dtype=int)
+
+    if dither == 0.0:
+        converted = cv2.cvtColor(fimg/255.0, cv2.COLOR_BGR2Lab)
+        for r in range(converted.shape[0]):
+            for c in range(converted.shape[1]):
+                lab = converted[r,c,:]
+                idx = bestColor(lab,colors_lab)
+                idx_map[r,c] = idx
+        return idx_map
+
+    colors = selectColors(palette)
+    tolab = lambda v: cv2.cvtColor(v.reshape(1,1,3)/255.0, cv2.COLOR_BGR2Lab).reshape(3)
+    debt = np.zeros(fimg.shape, dtype=np.float32)
+    inrange = lambda x: (x >= 0 and x < fimg.shape[1])
+
+    for r in range(fimg.shape[0]):
         if r%2==0:
-            clist = range(img.shape[1])
+            clist = range(fimg.shape[1])
             dc = 1
         else:
-            clist = range(img.shape[1]-1,-1,-1)
+            clist = range(fimg.shape[1]-1,-1,-1)
             dc = -1
         for c in clist:
-            bgr = np.asarray(img[r,c,:], float) + debt[r,c,:]
-            idx = bestColor(bgr,colors)
+            lab = tolab(np.clip(fimg[r,c,:]+debt[r,c,:],0,255))
+            idx = bestColor(lab,colors_lab)
             idx_map[r,c] = idx
             if dither>0.0:
-                error = dither*(bgr-colors[idx])
+                error = dither*(fimg[r,c,:]-colors[idx])
                 if inrange(c+dc):
                     debt[r,c+dc] += (7/16.0)*error
-                if r < img.shape[0] - 1:
+                if r < fimg.shape[0] - 1:
                     if inrange(c-dc): debt[r+1,c-dc] += (3/16.0)*error
                     debt[r+1,c] += (5/16.0)*error
                     if inrange(c+dc): debt[r+1,c+dc] += (1/16.0)*error
@@ -196,7 +225,7 @@ python %s [options] imagefile.ext output.p8
 --slower-recommend: take dithering settings into account when recommending (slower)
 '''
 
-if len(sys.argv) < 3:
+if len(sys.argv) < 2:
     print(usage % (sys.argv[0]))
     sys.exit(0)
 
@@ -243,6 +272,10 @@ while i < len(sys.argv):
 
 if imagefn is None:
     print("Error: no image filename specified.")
+    sys.exit(1)
+
+if not os.path.isfile(imagefn):
+    print("Image file does not exist.")
     sys.exit(1)
 
 if outfn and os.path.isfile(outfn):
