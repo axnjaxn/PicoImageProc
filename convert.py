@@ -246,7 +246,7 @@ python %s [options] imagefile.ext [output.p8]
                                 (format is text, one color index per line)
 --default-palette: use the normal palette and disable secret colors
 --ban-color index: do not allow a color index to appear in recommendations
---dither percentage: enable Floyd-Steinberg dithering (0%-100%)
+--dither percentage: enable Floyd-Steinberg dithering (0%%-100%%)
 --ordered-dither percentage: use ordered dithering
 --brighten percentage: adjust global image brightness
 --contrast percentage: adjust global image contrast
