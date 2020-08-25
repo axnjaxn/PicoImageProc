@@ -251,6 +251,7 @@ python %s [options] imagefile.ext [output.p8]
 --brighten percentage: adjust global image brightness
 --contrast percentage: adjust global image contrast
 --preview: preview results (3x scale, press any key to terminate)
+--export filename: export an image of the result
 --slower-recommend: take dithering settings into account when recommending (slower)
 '''
 
@@ -260,6 +261,7 @@ if len(sys.argv) < 2:
 
 imagefn = None
 outfn = None
+exportfn = None
 
 palette = list(range(32))
 preview = False
@@ -303,6 +305,9 @@ while i < len(sys.argv):
     elif arg == "--contrast":
         i = i + 1
         contrast = max(float(sys.argv[i])/100.0,0.0)
+    elif arg == "--export":
+        i = i + 1
+        exportfn = sys.argv[i]
     elif imagefn == None:
         imagefn = arg
     elif outfn == None:
@@ -364,8 +369,11 @@ if preview:
     print("Press any key in the window to continue...")
     cv2.waitKey(0)
 
+if exportfn is not None:
+    cv2.imwrite(exportfn, getPreview(img,palette,dither,ordered))
+
 if outfn is None:
-    print("Warning: No output file specified; no output written.")
+    print("Warning: No output file specified; no cart written.")
     sys.exit(0)
 
 converted = convertImage(img,palette,dither,ordered)

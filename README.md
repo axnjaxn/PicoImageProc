@@ -25,6 +25,7 @@ python convert.py [options] imagefile.ext [output.p8]
 --brighten percentage: adjust global image brightness
 --contrast percentage: adjust global image contrast
 --preview: preview results (3x scale, press any key to terminate)
+--export filename: export an image of the result (at PICO-8 resolution)
 --slower-recommend: take dithering settings into account when recommending (slower)
 ```
 
