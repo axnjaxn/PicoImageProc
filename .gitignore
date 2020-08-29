@@ -1,6 +1,8 @@
 *~
 *.p8
+*.pal
 *.csv
 *.txt
 *.png
 *.jpg
+__pycache__/*

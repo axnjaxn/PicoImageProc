@@ -6,13 +6,26 @@ A set of image processing functions for converting images for use in the PICO-8
 Dependencies
 ------------
 
-The tools are written in Python 3, with opencv/numpy.
+The tools are written in Python 3, with opencv/numpy. The frontend is written in wx.
 
 I recommend running `pip install opencv-python numpy` if you need to install them.
 
+Also run `pip install wxPython` if you want to use the interactive frontend.
 
-Usage
------
+Usage (Frontend)
+----------------
+
+```
+python frontend.py
+```
+
+This will pop up an interactive window you can play with.
+
+It's slow, ugly, and I plan to make it a lot faster/cleaner, but it's a proof-of-concept in the meantime, and hopefully it'll also be useful to you!
+
+
+Usage (Command Line)
+--------------------
 
 ```
 python convert.py [options] imagefile.ext [output.p8]

@@ -263,6 +263,8 @@ imagefn = None
 outfn = None
 exportfn = None
 
+suppress_messages = False
+
 palette = list(range(32))
 preview = False
 dither = 0.0
@@ -308,6 +310,8 @@ while i < len(sys.argv):
     elif arg == "--export":
         i = i + 1
         exportfn = sys.argv[i]
+    elif arg == "--suppress-messages":
+        suppress_messages = True
     elif imagefn == None:
         imagefn = arg
     elif outfn == None:
@@ -325,7 +329,7 @@ if not os.path.isfile(imagefn):
     print("Image file does not exist.")
     sys.exit(1)
 
-if outfn and os.path.isfile(outfn):
+if outfn and os.path.isfile(outfn) and not suppress_messages:
     print("Warning: output cartridge already exists!")
     print("This script will overwrite the contents of the output cartridge.")
     yn = input("Are you sure you want to continue? ").lower().strip()
@@ -352,11 +356,11 @@ if max(img.shape[0],img.shape[1])>128:
                      interpolation=cv2.INTER_AREA)
 
 if len(palette) > 16:
-    print("Generating recommended palette...")
+    if not suppress_messages: print("Generating recommended palette...")
     recommend_dither = dither
     if not tryhard: recommend_dither = 0
     palette = arrangePalette(bestPalette(img, palette, recommend_dither, ordered))
-    print("Done.")
+    if not suppress_messages: print("Done.")
 
 if preview:
     orig = cv2.resize(img,None,
@@ -373,7 +377,7 @@ if exportfn is not None:
     cv2.imwrite(exportfn, getPreview(img,palette,dither,ordered))
 
 if outfn is None:
-    print("Warning: No output file specified; no cart written.")
+    if not suppress_messages: print("Warning: No output file specified; no cart written.")
     sys.exit(0)
 
 converted = convertImage(img,palette,dither,ordered)
